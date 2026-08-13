@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="知行册 — 个人行测学习与错题复盘工作台" />
+  <title>知行册 · 行测学习工作台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231f684f'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='38' fill='white'%3E%E7%9F%A5%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand" data-view="dashboard" role="button" tabindex="0">
+        <div class="brand-mark">知</div>
+        <div><strong>知行册</strong><span>行测学习工作台</span></div>
+      </div>
+
+      <nav class="main-nav" aria-label="主导航">
+        <p class="nav-label">学习</p>
+        <button class="nav-item active" data-view="dashboard"><span class="nav-icon">⌂</span>今日概览</button>
+        <button class="nav-item" data-view="errors"><span class="nav-icon">▤</span>错题本<span class="nav-count">12</span></button>
+        <button class="nav-item" data-view="review"><span class="nav-icon">↻</span>复习计划<span class="nav-dot"></span></button>
+        <button class="nav-item" data-view="graph"><span class="nav-icon">⌘</span>知识图谱</button>
+        <button class="nav-item" data-view="stats"><span class="nav-icon">⌁</span>学习统计</button>
+
+        <p class="nav-label subject-label">科目</p>
+        <button class="nav-item subject active-subject" data-view="errors"><span class="subject-dot data"></span>资料分析</button>
+        <button class="nav-item subject disabled"><span class="subject-dot quantity"></span>数量关系<span class="soon">筹备中</span></button>
+        <button class="nav-item subject disabled"><span class="subject-dot language"></span>言语理解<span class="soon">筹备中</span></button>
+        <button class="nav-item subject disabled"><span class="subject-dot logic"></span>判断推理<span class="soon">筹备中</span></button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="sync-card">
+          <div class="sync-icon">☁</div>
+          <div><strong>仅存于本机</strong><span>云同步将在接入后启用</span></div>
+          <span class="status-pill">原型</span>
+        </div>
+        <button class="profile-row">
+          <span class="avatar">林</span><span><strong>林同学</strong><small>目标：省考 75+</small></span><span class="more">•••</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="crumb"><span id="crumbSection">资料分析</span><b>/</b><strong id="crumbPage">今日概览</strong></div>
+        <div class="top-actions">
+          <button class="search-btn" id="searchBtn" aria-label="搜索"><span>⌕</span><span>搜索题目、笔记</span><kbd>⌘ K</kbd></button>
+          <button class="icon-btn" id="notificationBtn" aria-label="通知">♢<i></i></button>
+          <button class="primary-btn" id="uploadBtn"><span>＋</span>录入题目</button>
+        </div>
+      </header>
+
+      <div id="viewContainer" class="view-container"></div>
+    </main>
+  </div>
+
+  <button class="ai-fab" id="aiFab" aria-label="打开 AI 学习助手"><span>✦</span><span>问问小知</span></button>
+
+  <div class="overlay" id="overlay"></div>
+  <aside class="ai-panel" id="aiPanel" aria-label="AI 学习助手">
+    <div class="panel-header">
+      <div><div class="ai-avatar">✦</div><span><strong>小知 · 学习助手</strong><small><i></i> 本地演示模式</small></span></div>
+      <button class="close-btn" data-close="aiPanel">×</button>
+    </div>
+    <div class="context-chip">正在结合「资料分析」错题记录回答</div>
+    <div class="chat-body" id="chatBody">
+      <div class="chat-date">今天 09:42</div>
+      <div class="message assistant"><div class="mini-avatar">✦</div><div class="bubble">早上好！我发现你最近在<strong>增长率比较</strong>上连续错了 3 次，而且平均用时偏长。<br><br>要不要先用一分钟回顾一下速算方法？</div></div>
+      <div class="quick-prompts">
+        <button>帮我总结增长率速算</button>
+        <button>分析我的薄弱点</button>
+        <button>给我一道相似题</button>
+      </div>
+    </div>
+    <form class="chat-input" id="chatForm">
+      <textarea id="chatInput" rows="2" placeholder="问一道题、一个知识点，或让我复盘…"></textarea>
+      <div><small>回答由本地模拟生成，请独立判断</small><button type="submit">↑</button></div>
+    </form>
+  </aside>
+
+  <section class="modal upload-modal" id="uploadModal" role="dialog" aria-modal="true" aria-labelledby="uploadTitle">
+    <div class="modal-header"><div><span class="eyebrow">新建学习材料</span><h2 id="uploadTitle">录入题目</h2></div><button class="close-btn" data-close="uploadModal">×</button></div>
+    <div class="stepper"><span class="active"><i>1</i>上传材料</span><b></b><span><i>2</i>AI 建议</span><b></b><span><i>3</i>确认保存</span></div>
+    <div class="upload-body">
+      <div class="upload-tabs"><button class="active" data-upload-tab="pdf">整份 PDF</button><button data-upload-tab="image">题目截图</button></div>
+      <div class="drop-zone" id="dropZone">
+        <div class="upload-cloud">⇧</div><h3 id="dropTitle">拖入一份试卷 PDF</h3><p id="dropHint">支持 PDF，原型中将使用演示文件模拟解析</p><button class="secondary-btn" id="chooseFile">选择文件</button><input type="file" id="fileInput" accept=".pdf,image/*" hidden />
+      </div>
+      <div class="privacy-note"><span>⌾</span><p><strong>数据说明</strong><br>当前原型不会上传文件。内容仅保存在此浏览器本地，后续可接入国内对象存储与数据库。</p></div>
+    </div>
+  </section>
+
+  <section class="modal classify-modal" id="classifyModal" role="dialog" aria-modal="true" aria-labelledby="classifyTitle">
+    <div class="modal-header"><div><span class="eyebrow">第 2 步，共 3 步</span><h2 id="classifyTitle">确认 AI 分类建议</h2></div><button class="close-btn" data-close="classifyModal">×</button></div>
+    <div class="ai-notice"><span>✦</span><p><strong>已识别 1 组材料、4 道关联小题</strong><br>AI 只提供建议。请确认或修改后再保存到错题本。</p></div>
+    <div class="classify-grid">
+      <div class="material-preview"><div class="fake-paper"><span>2025 年某省公务员录用考试</span><h4>根据以下资料，回答 116～119 题。</h4><p>2024 年，全国规模以上文化及相关产业企业实现营业收入……</p><div class="paper-chart"><i></i><i></i><i></i><i></i><i></i></div><p>116. 2024 年营业收入同比约增长多少？</p><p>117. 下列说法能够从材料中推出的是……</p></div><small>材料与 4 道小题将作为一个题组保存</small></div>
+      <div class="suggestion-form">
+        <label>所属科目<select><option>资料分析</option></select></label>
+        <label>知识点<div class="tag-editor"><span>增长率计算 ×</span><span>基期量 ×</span><input placeholder="添加标签" /></div></label>
+        <label>AI 判断的主要错因<select><option>基期量公式代入错误</option><option>材料定位偏差</option><option>计算耗时过长</option></select></label>
+        <label>你的笔记<textarea id="newNote" rows="4">基期量 = 现期量 ÷ (1 + 增长率)。注意增长率为负时的符号。</textarea></label>
+        <div class="confidence"><span>AI 分类置信度</span><div><i></i></div><strong>87%</strong></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="text-btn" id="backUpload">← 返回修改</button><button class="primary-btn" id="confirmSave">确认并保存题组</button></div>
+  </section>
+
+  <div class="toast" id="toast"><span>✓</span><div><strong>已保存</strong><small>题组已加入错题本与复习计划</small></div></div>
+  <script src="app.js"></script>
+</body>
+</html>

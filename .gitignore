@@ -1,0 +1,10 @@
+# Local and generated files
+outputs/
+work/
+.DS_Store
+Thumbs.db
+
+# Future cloud configuration (never commit credentials)
+.env
+.env.*
+!.env.example
