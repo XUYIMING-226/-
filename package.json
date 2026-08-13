@@ -8,6 +8,7 @@
     "dev": "node --watch server/index.js"
   },
   "dependencies": {
+    "ali-oss": "^6.23.0",
     "dotenv": "^16.6.1",
     "mysql2": "^3.14.4"
   },
