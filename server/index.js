@@ -4,6 +4,7 @@ const path = require('node:path');
 const http = require('node:http');
 const crypto = require('node:crypto');
 const { createOssPostPolicy } = require('./oss-upload-policy');
+const { uploadToOss } = require('./oss-upload');
 const database = require('./database');
 
 const root = path.resolve(__dirname, '..');
@@ -22,6 +23,19 @@ function readJson(req) {
     let body = '';
     req.on('data', chunk => { body += chunk; if (body.length > 100000) req.destroy(); });
     req.on('end', () => { try { resolve(JSON.parse(body || '{}')); } catch { reject(new Error('Invalid JSON body.')); } });
+    req.on('error', reject);
+  });
+}
+
+function readBinary(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = []; let size = 0;
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > maxBytes) { req.destroy(); reject(new Error('File exceeds the upload limit.')); return; }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
@@ -119,6 +133,19 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       return sendJson(res, 503, { error: error.message });
     }
+  }
+  if (req.method === 'POST' && url.pathname === '/api/uploads') {
+    try {
+      const contentType = String(req.headers['content-type'] || '').split(';')[0].trim();
+      const fileName = String(req.headers['x-file-name'] || 'upload');
+      if (!types.has(contentType)) return sendJson(res, 400, { error: 'Only PDF, JPG, PNG, and WebP files are accepted.' });
+      const body = await readBinary(req, maxUploadBytes);
+      if (!body.length) return sendJson(res, 400, { error: 'The uploaded file is empty.' });
+      const date = new Date().toISOString().slice(0, 10);
+      const key = `private/uploads/default/${date}/${crypto.randomUUID()}-${safeName(fileName)}`;
+      await uploadToOss({ bucket: process.env.OSS_BUCKET, region: process.env.OSS_REGION, accessKeyId: process.env.OSS_ACCESS_KEY_ID, accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET, key, contentType, body });
+      return sendJson(res, 201, { objectKey: key });
+    } catch (error) { return sendJson(res, 503, { error: error.message }); }
   }
   if (req.method === 'GET') return serveStatic(res, decodeURIComponent(url.pathname));
   return sendJson(res, 405, { error: 'Method not allowed' });

@@ -53,12 +53,28 @@ $$('[data-upload-tab]').forEach(btn=>btn.onclick=()=>{$$('[data-upload-tab]').fo
 $('#chooseFile').onclick=()=>$('#fileInput').click();
 ['dragenter','dragover'].forEach(e=>$('#dropZone').addEventListener(e,x=>{x.preventDefault();$('#dropZone').classList.add('dragover')}));['dragleave','drop'].forEach(e=>$('#dropZone').addEventListener(e,x=>{x.preventDefault();$('#dropZone').classList.remove('dragover');if(e==='drop') simulateParse(x.dataTransfer.files?.[0])}));
 $('#fileInput').onchange=event=>simulateParse(event.target.files?.[0]);
+/*
+ * Cloud uploads use the site server as a private relay.  This keeps the OSS
+ * credential out of the browser and avoids browser-to-OSS CORS requirements.
+ */
+async function uploadViaServer(file){
+  const response=await fetch('/api/uploads',{method:'POST',headers:{'content-type':file.type,'x-file-name':encodeURIComponent(file.name)},body:file});
+  const payload=await response.json();
+  if(!response.ok) throw new Error(payload.error||'OSS upload failed.');
+  return payload.objectKey;
+}
+
 async function simulateParse(file){
   const dz=$('#dropZone');
   const showProgress=(title,detail)=>{dz.innerHTML=`<div class="upload-cloud">☁</div><h3>${title}</h3><p>${detail}</p><div class="progress-bar" style="max-width:260px;margin:auto"><i style="width:72%"></i></div>`};
   if(!file){showProgress('正在本地模拟识别题目…','整理材料结构与 4 道关联小题');setTimeout(()=>{closeAll();openModal('classifyModal')},750);return}
   showProgress('正在准备安全上传…','正在向网站后端申请短时上传凭据');
   try{
+    const serverObjectKey=await uploadViaServer(file);
+    state.uploaded=true;state.uploadedObjectKey=serverObjectKey;state.uploadedFileName=file.name;
+    showProgress('上传完成，正在识别题目…','材料将与 4 道关联小题保持成组保存。');
+    setTimeout(()=>{closeAll();openModal('classifyModal')},600);
+    return;
     const policyResponse=await fetch('/api/upload-policy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({fileName:file.name,contentType:file.type})});
     if(!policyResponse.ok) throw new Error((await policyResponse.json()).error||'上传服务暂不可用');
     const policy=await policyResponse.json();
