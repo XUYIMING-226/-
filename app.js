@@ -40,6 +40,9 @@ function bindDynamic(){
   $('#pageUpload')?.addEventListener('click',()=>openModal('uploadModal'));
   if(state.view==='errors') loadCloudGroups();
   if(state.view==='inbox') loadAssets();
+  if(state.view==='graph') loadKnowledgeGraph();
+  if(state.view==='review') loadPracticePlan();
+  if(state.view==='dashboard'||state.view==='stats') loadDashboardMetrics();
   $('#askAiInsight')?.addEventListener('click',()=>openPanel());
   $('#submitAttempt')?.addEventListener('click',()=>{showToast('本题已提交','用时与作答结果已记录到本地');setTimeout(()=>render('review'),900)});
   $('#toggleTimer')?.addEventListener('click',e=>{if(state.timer){clearInterval(state.timer);state.timer=null;e.target.textContent='继续计时'}else{startTimer();e.target.textContent='暂停计时'}})
@@ -126,7 +129,25 @@ async function loadCloudGroups(){
     const list=$('.group-list'); if(!list) return;
     const cloudCards=groups.map(group=>`<article class="group-card cloud-group" data-cloud-group="${group.id}"><div class="group-top"><div class="paper-thumb"><i></i><i></i><i></i><i></i></div><div class="group-copy"><span class="meta">云端题组 · ${group.questionCount||0} 道关联小题</span><h3>${escapeHtml(group.title)}</h3><p>已保存到你的私有云端资料库；后续可在此补录题干、选项、错因与速算笔记。</p><div class="tag-row"><span class="tag">${escapeHtml(group.subject)}</span><span class="tag orange">RDS 已保存</span></div></div><div class="group-score"><strong>${group.questionCount||0} / 4</strong><span>${new Date(group.createdAt).toLocaleDateString('zh-CN')}</span></div></div><div class="subquestions"><span>云端状态</span><small>材料与题组关联已建立 →</small></div></article>`).join('');
     list.insertAdjacentHTML('afterbegin',cloudCards);
+    $$('[data-cloud-group]',list).forEach(card=>card.onclick=()=>openCloudGroup(card.dataset.cloudGroup));
   }catch(error){console.warn('Could not load cloud material groups.',error);}
+}
+
+async function openCloudGroup(id){
+  try{
+    const response=await fetch(`/api/material-groups/${id}`); const {group}=await response.json(); if(!response.ok) throw new Error('题组读取失败');
+    if(group.questions.length){showToast('题组已保存','小题编辑器会在下一轮界面升级中改为完整表单；当前可在复习计划中使用已录入小题。');return;}
+    const stem=window.prompt(`“${group.title}”目前还没有小题。输入第 1 小题题干：`); if(!stem?.trim()) return;
+    const rawOptions=window.prompt('可选：输入选项，每行一项（例如 A. 10）')||'';
+    const correctAnswer=window.prompt('可选：输入正确答案（例如 A）')||'';
+    const create=await fetch(`/api/material-groups/${id}/questions`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({questions:[{stem:stem.trim(),options:rawOptions.split('\n').map(x=>x.trim()).filter(Boolean),correctAnswer:correctAnswer.trim()}]})});
+    const payload=await create.json();if(!create.ok)throw new Error(payload.error||'小题保存失败');
+    const question=payload.questions[0];
+    const errorCause=window.prompt('可选：写下本题错因，例如“基期量公式代入错误”')||'';
+    if(errorCause.trim()) await fetch(`/api/questions/${question.id}/notes`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({noteType:'error_cause',content:errorCause.trim()})});
+    await fetch(`/api/questions/${question.id}/review-items`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({intervalDays:1})});
+    showToast('小题已录入','已自动进入明日复习队列；可继续在题组中补录其余小题。');render('errors');
+  }catch(error){showToast('操作失败',error.message);}
 }
 
 async function loadAssets(){
@@ -136,6 +157,42 @@ async function loadAssets(){
     if(!list) return; if(count) count.textContent=`${assets.length} 份待整理`;
     list.innerHTML=assets.length?assets.map(asset=>`<div class="review-item"><div class="review-icon">${asset.contentType?.includes('image')?'图':'文'}</div><div><strong>${escapeHtml(asset.title)}</strong><span>${escapeHtml(asset.sourceName||'自由上传')} · ${new Date(asset.createdAt).toLocaleDateString('zh-CN')}</span></div><button data-asset-note="${asset.id}">备注</button></div>`).join(''):`<div class="review-item"><div class="review-icon">＋</div><div><strong>收纳箱还是空的</strong><span>上传 PDF、Word、图片或文字资料后，会先安全存入这里。</span></div></div>`;
   }catch(error){const list=$('#assetList');if(list)list.innerHTML=`<div class="review-item"><div class="review-icon">!</div><div><strong>暂时无法读取资料</strong><span>${escapeHtml(error.message)}</span></div></div>`;}
+}
+
+async function loadKnowledgeGraph(){
+  try{
+    const response=await fetch('/api/knowledge-nodes?subject='+encodeURIComponent('资料分析')); if(!response.ok) throw new Error('Could not load knowledge graph.');
+    const {nodes=[]}=await response.json(); const container=$('.knowledge-nodes'); if(!container) return;
+    const title=$('.page-head'); if(title&&!$('#addKnowledgeNode')) title.insertAdjacentHTML('beforeend','<button class="primary-btn" id="addKnowledgeNode">＋ 添加知识点</button>');
+    $('#addKnowledgeNode').onclick=async()=>{
+      const title=window.prompt('输入知识点名称，例如“增长率比较”'); if(!title?.trim()) return;
+      const note=window.prompt('可选：输入速算提示或定义');
+      const created=await fetch('/api/knowledge-nodes',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({subject:'资料分析',title:title.trim(),note:note||''})});
+      if(!created.ok){showToast('创建失败','请稍后再试');return;} showToast('知识点已保存','已写入你的知识图谱'); loadKnowledgeGraph();
+    };
+    if(!nodes.length){container.innerHTML='<div class="card" style="padding:28px;position:relative;z-index:2"><h3>知识图谱还没有节点</h3><p>可以先手动添加，也可以后续上传 Word/导图，由 AI 生成待确认草稿。</p></div>';return;}
+    const children=new Map(nodes.map(node=>[node.id,[]])); nodes.forEach(node=>{if(node.parentId&&children.has(node.parentId))children.get(node.parentId).push(node);});
+    const branch=(node,level=0)=>`<div class="review-item" style="margin-left:${level*22}px"><div class="review-icon">${level+1}</div><div><strong>${escapeHtml(node.title)}</strong><span>${escapeHtml(node.note||'暂无速算提示或备注')}</span></div></div>${(children.get(node.id)||[]).map(child=>branch(child,level+1)).join('')}`;
+    const roots=nodes.filter(node=>!node.parentId||!children.has(node.parentId));
+    container.innerHTML=`<div class="card" style="position:relative;z-index:2;padding:20px"><div class="card-title"><h3>已保存知识点</h3><span>${nodes.length} 个节点</span></div>${roots.map(root=>branch(root)).join('')}</div>`;
+  }catch(error){console.warn('Could not load knowledge graph.',error);}
+}
+
+async function loadPracticePlan(){
+  try{
+    const response=await fetch('/api/practice-plan?subject='+encodeURIComponent('资料分析')); if(!response.ok) return;
+    const {questions=[]}=await response.json(); const card=$('.view-container .card'); if(!card) return;
+    const body=questions.length?questions.slice(0,8).map((question,index)=>`<div class="review-item ${index?'green':''}"><div class="review-icon">${index+1}</div><div><strong>第 ${question.position} 题 · ${escapeHtml(question.stem).slice(0,42)}${question.stem.length>42?'…':''}</strong><span>已错 ${question.wrongCount||0} 次 · 平均 ${question.averageSeconds||0} 秒</span></div><button data-cloud-question="${question.id}">开始</button></div>`).join(''):'<div class="review-item"><div class="review-icon">＋</div><div><strong>还没有可复习的小题</strong><span>将题目和正确答案录入题组后，就能生成真实复习计划。</span></div></div>';
+    card.innerHTML=`<div class="card-title"><h3>云端复习计划</h3><span>${questions.length} 道可安排</span></div>${body}`;
+  }catch(error){console.warn('Could not load practice plan.',error);}
+}
+
+async function loadDashboardMetrics(){
+  try{
+    const response=await fetch('/api/dashboard?subject='+encodeURIComponent('资料分析')); if(!response.ok) return;
+    const data=await response.json(); const metrics=$$('.metric strong');
+    if(metrics.length>=3){metrics[0].innerHTML=`${data.summary.questionCount||0} <span>题</span>`;metrics[1].innerHTML=`${data.summary.accuracy||0} <span>%</span>`;metrics[2].innerHTML=`${data.summary.averageSeconds||0} <span>秒</span>`;}
+  }catch(error){console.warn('Could not load dashboard metrics.',error);}
 }
 
 function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}

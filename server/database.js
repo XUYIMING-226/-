@@ -72,13 +72,17 @@ async function createQuestions(materialGroupId, questions) {
   const connection = await connectionPool.getConnection();
   try {
     await connection.beginTransaction();
+    const created = [];
     for (const [index, question] of questions.entries()) {
+      const id = crypto.randomUUID();
       await connection.execute(
         'INSERT INTO questions (id, material_group_id, position, stem, options_json, correct_answer) VALUES (?, ?, ?, ?, ?, ?)',
-        [crypto.randomUUID(), materialGroupId, index + 1, question.stem, question.options ? JSON.stringify(question.options) : null, question.correctAnswer || null]
+        [id, materialGroupId, index + 1, question.stem, question.options ? JSON.stringify(question.options) : null, question.correctAnswer || null]
       );
+      created.push({ id, position: index + 1, stem: question.stem, options: question.options || [], correctAnswer: question.correctAnswer || null });
     }
     await connection.commit();
+    return created;
   } catch (error) {
     await connection.rollback();
     throw error;
