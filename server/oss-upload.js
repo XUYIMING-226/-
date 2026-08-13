@@ -27,9 +27,13 @@ function uploadToOss({ bucket, region, accessKeyId, accessKeySecret, key, conten
   const authorization = `${algorithm} Credential=${accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
   return new Promise((resolve, reject) => {
     const request = https.request({ hostname: host, method: 'PUT', path: objectPath(key), headers: { Host: host, 'Content-Type': contentType, 'Content-Length': body.length, 'x-oss-content-sha256': payloadHash, 'x-oss-date': date, Authorization: authorization } }, response => {
-      response.resume();
-      if (response.statusCode >= 200 && response.statusCode < 300) return resolve();
-      reject(new Error(`OSS upload failed (HTTP ${response.statusCode}).`));
+      const chunks = [];
+      response.on('data', chunk => chunks.push(chunk));
+      response.on('end', () => {
+        if (response.statusCode >= 200 && response.statusCode < 300) return resolve();
+        const detail = Buffer.concat(chunks).toString('utf8').replace(/\s+/g, ' ').slice(0, 500);
+        reject(new Error(`OSS upload failed (HTTP ${response.statusCode}): ${detail}`));
+      });
     });
     request.on('error', error => reject(new Error(`Could not reach OSS: ${error.message}`)));
     request.end(body);
