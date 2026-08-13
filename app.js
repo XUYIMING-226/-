@@ -1,12 +1,14 @@
 const $ = (s, el=document) => el.querySelector(s);
 const $$ = (s, el=document) => [...el.querySelectorAll(s)];
-const state = { view: 'dashboard', seconds: 0, timer: null, uploaded: false, uploadedObjectKey: null, uploadedFileName: null };
+const state = { view: 'dashboard', seconds: 0, timer: null, uploaded: false, uploadedObjectKey: null, uploadedFileName: null, uploadMode: 'pdf' };
 
 const demoGroups = [
   {id:1,title:'2024 年全国文化产业营业收入',source:'2025 国考 · 地市级',desc:'根据全国规模以上文化及相关产业企业营业收入与同比增速，回答 116—119 题。',tags:['增长率计算','基期量'],wrong:2,time:'08:42',score:'2 / 4'},
   {id:2,title:'某省新能源汽车产销情况',source:'2024 浙江省考 · A卷',desc:'包含新能源汽车产量、销量、出口量及市场占有率等统计数据。',tags:['比重变化','平均数'],wrong:1,time:'07:18',score:'3 / 4'},
   {id:3,title:'全国居民人均消费支出',source:'2024 联考 · 行测',desc:'按消费类别分列城镇与农村居民人均消费支出及增长情况。',tags:['增长量比较','倍数'],wrong:3,time:'10:26',score:'1 / 4'}
 ];
+
+function inbox(){return `<section class="section-page"><div class="page-head"><div><span class="eyebrow">UNSORTED MATERIALS</span><h1>资料收纳箱</h1><p>先上传，不必当场分类。之后再整理到知识图谱、错题本或典型题库。</p></div><button class="primary-btn" id="pageUpload">＋ 上传资料</button></div><div class="card"><div class="card-title"><h3>待整理资料</h3><span id="assetCount">正在读取…</span></div><div id="assetList" class="review-list"><div class="review-item"><div class="review-icon">…</div><div><strong>正在读取云端资料</strong><span>文件保存在私有 OSS，不公开</span></div></div></div></div></section>`}
 
 function dashboard(){return `
   <section>
@@ -30,13 +32,14 @@ function stats(){return `<section><div class="page-head"><div><span class="eyebr
 
 function attempt(){return `<section><button class="detail-back" data-view="errors">← 返回错题本</button><div class="page-head"><div><span class="eyebrow">TIMED RETRY · 题组重做</span><h1>2024 年全国文化产业营业收入</h1><p>4 道关联小题 · 建议用时 8 分钟</p></div></div><div class="attempt-workspace"><div class="question-pane"><div class="source">2024 年，全国规模以上文化及相关产业企业实现营业收入 141510 亿元，比上年增长 6.0%。分业态看，文化新业态特征较为明显的 16 个行业小类实现营业收入 59082 亿元，比上年增长 9.8%。</div><table class="data-table"><tr><th>类别</th><th>营业收入（亿元）</th><th>同比增长</th></tr><tr><td>文化制造业</td><td>42191</td><td>4.5%</td></tr><tr><td>文化批发和零售业</td><td>23309</td><td>5.6%</td></tr><tr><td>文化服务业</td><td>76010</td><td>7.0%</td></tr></table><div class="question-tabs">${[116,117,118,119].map((q,i)=>`<button class="${i===0?'active':''}">${q}</button>`).join('')}</div><p class="question-text">116. 2023 年全国规模以上文化及相关产业企业实现营业收入约为多少万亿元？</p><div class="options">${['A. 12.6','B. 13.4','C. 14.2','D. 15.0'].map((x,i)=>`<label><input type="radio" name="answer" value="${i}"> ${x}</label>`).join('')}</div></div><aside class="answer-pane"><div class="timer-label">本题用时</div><div class="timer" id="timer">00:00</div><button class="secondary-btn" id="toggleTimer" style="width:100%">暂停计时</button><hr style="border:0;border-top:1px solid #e8ebe8;margin:20px 0"><span class="eyebrow">上次错因</span><div class="note-box">基期量公式代入错误。应使用：现期量 ÷（1 + 增长率）。注意结果单位由“亿元”换算为“万亿元”。</div><button class="primary-btn" id="submitAttempt">提交本题</button></aside></div></section>`}
 
-function render(view){state.view=view;const views={dashboard,errors,review,graph,stats,attempt};$('#viewContainer').innerHTML=(views[view]||dashboard)();const names={dashboard:'今日概览',errors:'错题本',review:'复习计划',graph:'知识图谱',stats:'学习统计',attempt:'计时重做'};$('#crumbPage').textContent=names[view];$$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.view===view));if(state.timer){clearInterval(state.timer);state.timer=null}if(view==='attempt') startTimer();bindDynamic();window.scrollTo({top:0,behavior:'smooth'})}
+function render(view){state.view=view;const views={dashboard,errors,review,graph,stats,attempt,inbox};$('#viewContainer').innerHTML=(views[view]||dashboard)();const names={dashboard:'今日概览',errors:'错题本',review:'复习计划',graph:'知识图谱',stats:'学习统计',attempt:'计时重做',inbox:'资料收纳箱'};$('#crumbPage').textContent=names[view];$$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.view===view));if(state.timer){clearInterval(state.timer);state.timer=null}if(view==='attempt') startTimer();bindDynamic();window.scrollTo({top:0,behavior:'smooth'})}
 
 function bindDynamic(){
   $$('[data-view]').forEach(el=>el.onclick=()=>render(el.dataset.view));
   $$('[data-action="start-review"], [data-group]').forEach(el=>el.onclick=()=>render('attempt'));
   $('#pageUpload')?.addEventListener('click',()=>openModal('uploadModal'));
   if(state.view==='errors') loadCloudGroups();
+  if(state.view==='inbox') loadAssets();
   $('#askAiInsight')?.addEventListener('click',()=>openPanel());
   $('#submitAttempt')?.addEventListener('click',()=>{showToast('本题已提交','用时与作答结果已记录到本地');setTimeout(()=>render('review'),900)});
   $('#toggleTimer')?.addEventListener('click',e=>{if(state.timer){clearInterval(state.timer);state.timer=null;e.target.textContent='继续计时'}else{startTimer();e.target.textContent='暂停计时'}})
@@ -49,7 +52,7 @@ function openPanel(){closeAll();$('#overlay').classList.add('show');$('#aiPanel'
 function showToast(title,sub){$('#toast strong').textContent=title;$('#toast small').textContent=sub;$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),2600)}
 
 $('#uploadBtn').onclick=()=>openModal('uploadModal');$('#aiFab').onclick=openPanel;$('#overlay').onclick=closeAll;$$('[data-close]').forEach(x=>x.onclick=closeAll);
-$$('[data-upload-tab]').forEach(btn=>btn.onclick=()=>{$$('[data-upload-tab]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');const image=btn.dataset.uploadTab==='image';$('#dropTitle').textContent=image?'拖入一道题目截图':'拖入一份试卷 PDF';$('#dropHint').textContent=image?'支持 PNG、JPG；可连续录入同一材料的关联题':'支持 PDF，原型中将使用演示文件模拟解析';$('#fileInput').accept=image?'image/*':'.pdf'});
+$$('[data-upload-tab]').forEach(btn=>btn.onclick=()=>{$$('[data-upload-tab]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');state.uploadMode=btn.dataset.uploadTab;const image=state.uploadMode==='image', asset=state.uploadMode==='asset';$('#dropTitle').textContent=asset?'拖入任何学习资料':image?'拖入一道题目截图':'拖入一份试卷 PDF';$('#dropHint').textContent=asset?'支持 PDF、Word、图片或文本；先进入待整理区，之后再分类':'支持 PDF 或图片；材料和关联小题会成组保存';$('#fileInput').accept=asset?'.pdf,.doc,.docx,.txt,image/*':image?'image/*':'.pdf,image/*'});
 $('#chooseFile').onclick=()=>$('#fileInput').click();
 ['dragenter','dragover'].forEach(e=>$('#dropZone').addEventListener(e,x=>{x.preventDefault();$('#dropZone').classList.add('dragover')}));['dragleave','drop'].forEach(e=>$('#dropZone').addEventListener(e,x=>{x.preventDefault();$('#dropZone').classList.remove('dragover');if(e==='drop') simulateParse(x.dataTransfer.files?.[0])}));
 $('#fileInput').onchange=event=>simulateParse(event.target.files?.[0]);
@@ -72,6 +75,14 @@ async function simulateParse(file){
   try{
     const serverObjectKey=await uploadViaServer(file);
     state.uploaded=true;state.uploadedObjectKey=serverObjectKey;state.uploadedFileName=file.name;
+    if(state.uploadMode==='asset'){
+      const title=file.name.replace(/\.[^.]+$/,'').slice(0,255);
+      const response=await fetch('/api/assets',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title,sourceName:file.name,contentType:file.type,ossObjectKey:serverObjectKey})});
+      const payload=await response.json(); if(!response.ok) throw new Error(payload.error||'资料保存失败');
+      closeAll();showToast('资料已收进云端收纳箱','暂不分类；之后可由你或 AI 归档到具体知识点。');
+      state.uploaded=false;state.uploadedObjectKey=null;state.uploadedFileName=null;
+      setTimeout(()=>render('inbox'),500);return;
+    }
     showProgress('上传完成，正在识别题目…','材料将与 4 道关联小题保持成组保存。');
     setTimeout(()=>{closeAll();openModal('classifyModal')},600);
     return;
@@ -118,8 +129,18 @@ async function loadCloudGroups(){
   }catch(error){console.warn('Could not load cloud material groups.',error);}
 }
 
+async function loadAssets(){
+  try{
+    const response=await fetch('/api/assets?status=inbox'); if(!response.ok) throw new Error('Could not load assets.');
+    const {assets=[]}=await response.json(); const list=$('#assetList'); const count=$('#assetCount');
+    if(!list) return; if(count) count.textContent=`${assets.length} 份待整理`;
+    list.innerHTML=assets.length?assets.map(asset=>`<div class="review-item"><div class="review-icon">${asset.contentType?.includes('image')?'图':'文'}</div><div><strong>${escapeHtml(asset.title)}</strong><span>${escapeHtml(asset.sourceName||'自由上传')} · ${new Date(asset.createdAt).toLocaleDateString('zh-CN')}</span></div><button data-asset-note="${asset.id}">备注</button></div>`).join(''):`<div class="review-item"><div class="review-icon">＋</div><div><strong>收纳箱还是空的</strong><span>上传 PDF、Word、图片或文字资料后，会先安全存入这里。</span></div></div>`;
+  }catch(error){const list=$('#assetList');if(list)list.innerHTML=`<div class="review-item"><div class="review-icon">!</div><div><strong>暂时无法读取资料</strong><span>${escapeHtml(error.message)}</span></div></div>`;}
+}
+
 function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}
 $('#chatForm').onsubmit=e=>{e.preventDefault();const input=$('#chatInput');if(!input.value.trim())return;$('#chatBody').insertAdjacentHTML('beforeend',`<div class="message user"><div class="bubble">${input.value.replace(/[<>]/g,'')}</div></div><div class="message assistant"><div class="mini-avatar">✦</div><div class="bubble">可以先用“分子分母同向变化”判断趋势，再做截位估算。结合你的错题记录，建议把精算留到两个选项非常接近时。<br><br><small>这是本地模拟回答，不会发送到云端。</small></div></div>`);input.value='';$('#chatBody').scrollTop=$('#chatBody').scrollHeight};$$('.quick-prompts button').forEach(b=>b.onclick=()=>{$('#chatInput').value=b.textContent;$('#chatForm').requestSubmit()});
 $('#searchBtn').onclick=()=>{if(!$('#searchModal')){document.body.insertAdjacentHTML('beforeend',`<section class="modal search-modal" id="searchModal"><div class="modal-header" style="padding:0 0 12px"><h2>搜索知识库</h2><button class="close-btn" data-close="searchModal">×</button></div><input autofocus placeholder="输入知识点、题源或笔记关键词…"><div class="search-results"><div class="search-result"><span>增长率计算 · 4 组错题</span><span>知识点</span></div><div class="search-result"><span>基期量 = 现期量 ÷ (1 + 增长率)</span><span>笔记</span></div><div class="search-result"><span>2024 年全国文化产业营业收入</span><span>题组</span></div></div></section>`);$('#searchModal [data-close]').onclick=closeAll}openModal('searchModal');setTimeout(()=>$('#searchModal input').focus(),100)};
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('#searchBtn').click()}if(e.key==='Escape')closeAll()});
+const statsNav=$('[data-view="stats"]');if(statsNav)statsNav.insertAdjacentHTML('afterend','<button class="nav-item" data-view="inbox"><span class="nav-icon">▱</span>资料收纳箱</button>');
 render('dashboard');

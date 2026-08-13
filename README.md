@@ -57,3 +57,16 @@ npm start
 - 阿里云最小权限与 CORS 配置说明：`docs/ALIYUN_OSS_SETUP.md`
 
 未配置服务器端 OSS 环境变量时，页面会继续使用本地演示流程，并且不会上传文件。
+
+## 当前真实数据流程
+
+资料分析的云端数据分为：原文件（OSS）、题组与小题、知识图谱节点、备注、知识点归属、作答记录、复习队列以及待整理资料（RDS）。AI 接入前，所有自动分类均保留为待确认状态；用户确认的结果才会进入正式知识库。
+
+首次启用上述学习流程时，在 ECS 上执行一次迁移：
+
+```bash
+cd ~/xingce-study-site
+mysql -h "$DATABASE_HOST" -P "$DATABASE_PORT" -u "$DATABASE_USER" -p "$DATABASE_NAME" < database/migrations/001_learning_workflow.sql
+```
+
+命令会询问数据库密码，密码输入时不会显示字符。迁移只会创建新表，不会删除现有题组或文件。

@@ -10,7 +10,11 @@ const database = require('./database');
 const root = path.resolve(__dirname, '..');
 const port = Number(process.env.PORT || 3000);
 const maxUploadBytes = Number(process.env.OSS_MAX_UPLOAD_BYTES || 26214400);
-const types = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
+const types = new Set([
+  'application/pdf', 'image/jpeg', 'image/png', 'image/webp',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword', 'text/plain'
+]);
 const mimeTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8' };
 
 function sendJson(res, status, payload) {
@@ -63,6 +67,14 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 503, { ok: false, ossConfigured: Boolean(process.env.OSS_ACCESS_KEY_ID && process.env.OSS_ACCESS_KEY_SECRET), database: { configured: true, connected: false }, error: error.message });
     }
   }
+  if (req.method === 'GET' && url.pathname === '/api/dashboard') {
+    try { return sendJson(res, 200, await database.getDashboard(url.searchParams.get('subject') || '资料分析')); }
+    catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
+  if (req.method === 'GET' && url.pathname === '/api/practice-plan') {
+    try { return sendJson(res, 200, { questions: await database.getPracticePlan(url.searchParams.get('subject') || '资料分析') }); }
+    catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
   if (req.method === 'POST' && url.pathname === '/api/material-groups') {
     try {
       const { subject = '资料分析', title, sourceName, ossObjectKey } = await readJson(req);
@@ -112,6 +124,52 @@ const server = http.createServer(async (req, res) => {
       if (!Number.isInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > 10800) return sendJson(res, 400, { error: 'durationSeconds must be between 0 and 10800.' });
       const attempt = await database.createAttempt({ id: crypto.randomUUID(), questionId, selectedAnswer: String(selectedAnswer || '').slice(0, 32), isCorrect: typeof isCorrect === 'boolean' ? isCorrect : null, durationSeconds });
       return sendJson(res, 201, { attempt });
+    } catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
+  if (req.method === 'POST' && /^\/api\/questions\/[^/]+\/knowledge-nodes$/.test(url.pathname)) {
+    try {
+      const questionId = url.pathname.split('/')[3];
+      const { knowledgeNodeId, source = 'manual', userConfirmed = true } = await readJson(req);
+      if (!knowledgeNodeId) return sendJson(res, 400, { error: 'knowledgeNodeId is required.' });
+      await database.assignQuestionKnowledgeNode(questionId, knowledgeNodeId, source === 'ai_suggestion' ? source : 'manual', Boolean(userConfirmed));
+      return sendJson(res, 201, { ok: true });
+    } catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
+  if (req.method === 'GET' && /^\/api\/(knowledge-nodes|material-groups|questions|assets)\/[^/]+\/notes$/.test(url.pathname)) {
+    try {
+      const [, , entityType, entityId] = url.pathname.split('/');
+      const map = { 'knowledge-nodes': 'knowledge_node', 'material-groups': 'material_group', questions: 'question', assets: 'asset' };
+      return sendJson(res, 200, { notes: await database.listEntityNotes(map[entityType], entityId) });
+    } catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
+  if (req.method === 'POST' && /^\/api\/(knowledge-nodes|material-groups|questions|assets)\/[^/]+\/notes$/.test(url.pathname)) {
+    try {
+      const [, , entityType, entityId] = url.pathname.split('/');
+      const map = { 'knowledge-nodes': 'knowledge_node', 'material-groups': 'material_group', questions: 'question', assets: 'asset' };
+      const { noteType = 'free', content } = await readJson(req);
+      if (!content || !['error_cause', 'fast_method', 'pitfall', 'reflection', 'free'].includes(noteType)) return sendJson(res, 400, { error: 'A valid noteType and content are required.' });
+      const note = await database.createEntityNote({ id: crypto.randomUUID(), entityType: map[entityType], entityId, noteType, content: String(content).slice(0, 10000) });
+      return sendJson(res, 201, { note });
+    } catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
+  if (req.method === 'POST' && /^\/api\/questions\/[^/]+\/review-items$/.test(url.pathname)) {
+    try {
+      const questionId = url.pathname.split('/')[3];
+      const { dueAt, intervalDays = 1 } = await readJson(req);
+      const item = await database.createReviewItem({ id: crypto.randomUUID(), questionId, dueAt: dueAt || new Date().toISOString().slice(0, 19).replace('T', ' '), intervalDays: Math.max(1, Math.min(365, Number(intervalDays) || 1)) });
+      return sendJson(res, 201, { item });
+    } catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
+  if (req.method === 'GET' && url.pathname === '/api/assets') {
+    try { return sendJson(res, 200, { assets: await database.listAssets(url.searchParams.get('status') || 'inbox') }); }
+    catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
+  if (req.method === 'POST' && url.pathname === '/api/assets') {
+    try {
+      const { subject, title, sourceName, contentType, ossObjectKey, userNote } = await readJson(req);
+      if (!title || !ossObjectKey) return sendJson(res, 400, { error: 'title and ossObjectKey are required.' });
+      const asset = await database.createAsset({ id: crypto.randomUUID(), subject: subject ? String(subject).slice(0, 40) : null, title: String(title).slice(0, 255), sourceName: String(sourceName || '').slice(0, 255), contentType: String(contentType || '').slice(0, 120), ossObjectKey: String(ossObjectKey).slice(0, 512), userNote: String(userNote || '').slice(0, 10000) });
+      return sendJson(res, 201, { asset });
     } catch (error) { return sendJson(res, 503, { error: error.message }); }
   }
   if (req.method === 'POST' && url.pathname === '/api/upload-policy') {

@@ -106,5 +106,109 @@ async function createAttempt({ id, questionId, selectedAnswer, isCorrect, durati
   return { id, questionId, selectedAnswer: selectedAnswer || null, isCorrect: isCorrect ?? null, durationSeconds };
 }
 
+async function createAsset({ id, subject, title, sourceName, contentType, ossObjectKey, userNote }) {
+  const connectionPool = getPool();
+  if (!connectionPool) throw new Error('Database is not configured.');
+  await connectionPool.execute(
+    'INSERT INTO learning_assets (id, subject, title, source_name, content_type, oss_object_key, user_note) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, subject || null, title, sourceName || null, contentType || null, ossObjectKey, userNote || null]
+  );
+  return { id, subject: subject || null, title, sourceName: sourceName || null, contentType: contentType || null, ossObjectKey, status: 'inbox', userNote: userNote || null };
+}
+
+async function listAssets(status = 'inbox') {
+  const connectionPool = getPool();
+  if (!connectionPool) throw new Error('Database is not configured.');
+  const [rows] = await connectionPool.execute(
+    'SELECT id, subject, title, source_name AS sourceName, content_type AS contentType, oss_object_key AS ossObjectKey, status, user_note AS userNote, created_at AS createdAt FROM learning_assets WHERE status = ? ORDER BY created_at DESC',
+    [status]
+  );
+  return rows;
+}
+
+async function createEntityNote({ id, entityType, entityId, noteType, content }) {
+  const connectionPool = getPool();
+  if (!connectionPool) throw new Error('Database is not configured.');
+  await connectionPool.execute(
+    'INSERT INTO entity_notes (id, entity_type, entity_id, note_type, content) VALUES (?, ?, ?, ?, ?)',
+    [id, entityType, entityId, noteType, content]
+  );
+  return { id, entityType, entityId, noteType, content };
+}
+
+async function listEntityNotes(entityType, entityId) {
+  const connectionPool = getPool();
+  if (!connectionPool) throw new Error('Database is not configured.');
+  const [rows] = await connectionPool.execute(
+    'SELECT id, entity_type AS entityType, entity_id AS entityId, note_type AS noteType, content, created_at AS createdAt, updated_at AS updatedAt FROM entity_notes WHERE entity_type = ? AND entity_id = ? ORDER BY updated_at DESC',
+    [entityType, entityId]
+  );
+  return rows;
+}
+
+async function assignQuestionKnowledgeNode(questionId, knowledgeNodeId, source = 'manual', userConfirmed = true) {
+  const connectionPool = getPool();
+  if (!connectionPool) throw new Error('Database is not configured.');
+  await connectionPool.execute(
+    'INSERT INTO question_knowledge_nodes (question_id, knowledge_node_id, source, user_confirmed) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE source = VALUES(source), user_confirmed = VALUES(user_confirmed)',
+    [questionId, knowledgeNodeId, source, userConfirmed]
+  );
+}
+
+async function createReviewItem({ id, questionId, dueAt, intervalDays = 1 }) {
+  const connectionPool = getPool();
+  if (!connectionPool) throw new Error('Database is not configured.');
+  await connectionPool.execute(
+    'INSERT INTO review_items (id, question_id, due_at, interval_days) VALUES (?, ?, ?, ?)',
+    [id, questionId, dueAt, intervalDays]
+  );
+  return { id, questionId, dueAt, intervalDays, state: 'due' };
+}
+
+async function getPracticePlan(subject) {
+  const connectionPool = getPool();
+  if (!connectionPool) throw new Error('Database is not configured.');
+  const [rows] = await connectionPool.execute(`
+    SELECT q.id, q.material_group_id AS materialGroupId, q.position, q.stem, q.options_json AS optionsJson, q.correct_answer AS correctAnswer,
+           r.due_at AS dueAt, r.interval_days AS intervalDays,
+           COUNT(a.id) AS attemptCount,
+           SUM(a.is_correct = 0) AS wrongCount,
+           ROUND(AVG(a.duration_seconds)) AS averageSeconds
+    FROM questions q
+    JOIN material_groups g ON g.id = q.material_group_id
+    LEFT JOIN review_items r ON r.question_id = q.id AND r.state = 'due'
+    LEFT JOIN attempts a ON a.question_id = q.id
+    WHERE g.subject = ?
+    GROUP BY q.id, r.due_at, r.interval_days
+    ORDER BY (r.due_at IS NULL), r.due_at ASC, wrongCount DESC, averageSeconds DESC
+    LIMIT 30`, [subject]);
+  return rows.map(row => ({ ...row, options: row.optionsJson ? JSON.parse(row.optionsJson) : [] }));
+}
+
+async function getDashboard(subject) {
+  const connectionPool = getPool();
+  if (!connectionPool) throw new Error('Database is not configured.');
+  const [[summary]] = await connectionPool.execute(`
+    SELECT COUNT(DISTINCT q.id) AS questionCount, COUNT(a.id) AS attemptCount,
+           COALESCE(ROUND(100 * AVG(a.is_correct = 1), 1), 0) AS accuracy,
+           COALESCE(ROUND(AVG(a.duration_seconds)), 0) AS averageSeconds
+    FROM material_groups g
+    LEFT JOIN questions q ON q.material_group_id = g.id
+    LEFT JOIN attempts a ON a.question_id = q.id
+    WHERE g.subject = ?`, [subject]);
+  const [causes] = await connectionPool.execute(`
+    SELECT n.content AS label, COUNT(*) AS count
+    FROM entity_notes n
+    JOIN questions q ON n.entity_type = 'question' AND n.entity_id = q.id
+    JOIN material_groups g ON g.id = q.material_group_id
+    WHERE g.subject = ? AND n.note_type = 'error_cause'
+    GROUP BY n.content ORDER BY count DESC LIMIT 5`, [subject]);
+  const [[reviews]] = await connectionPool.execute(`
+    SELECT COUNT(*) AS dueCount FROM review_items r
+    JOIN questions q ON q.id = r.question_id JOIN material_groups g ON g.id = q.material_group_id
+    WHERE g.subject = ? AND r.state = 'due' AND r.due_at <= NOW()`, [subject]);
+  return { summary, causes, dueCount: reviews.dueCount };
+}
+
 const crypto = require('node:crypto');
-module.exports = { configured, health, createMaterialGroup, listMaterialGroups, getMaterialGroup, createQuestions, listKnowledgeNodes, createKnowledgeNode, createAttempt };
+module.exports = { configured, health, createMaterialGroup, listMaterialGroups, getMaterialGroup, createQuestions, listKnowledgeNodes, createKnowledgeNode, createAttempt, createAsset, listAssets, createEntityNote, listEntityNotes, assignQuestionKnowledgeNode, createReviewItem, getPracticePlan, getDashboard };
