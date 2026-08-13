@@ -7,6 +7,9 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js"
   },
+  "dependencies": {
+    "mysql2": "^3.14.4"
+  },
   "engines": {
     "node": ">=20"
   }

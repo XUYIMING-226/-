@@ -3,6 +3,7 @@ const path = require('node:path');
 const http = require('node:http');
 const crypto = require('node:crypto');
 const { createOssPostPolicy } = require('./oss-upload-policy');
+const database = require('./database');
 
 const root = path.resolve(__dirname, '..');
 const port = Number(process.env.PORT || 3000);
@@ -41,7 +42,55 @@ function serveStatic(res, requestPath) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (req.method === 'GET' && url.pathname === '/api/health') {
-    return sendJson(res, 200, { ok: true, ossConfigured: Boolean(process.env.OSS_ACCESS_KEY_ID && process.env.OSS_ACCESS_KEY_SECRET) });
+    try {
+      return sendJson(res, 200, { ok: true, ossConfigured: Boolean(process.env.OSS_ACCESS_KEY_ID && process.env.OSS_ACCESS_KEY_SECRET), database: await database.health() });
+    } catch (error) {
+      return sendJson(res, 503, { ok: false, ossConfigured: Boolean(process.env.OSS_ACCESS_KEY_ID && process.env.OSS_ACCESS_KEY_SECRET), database: { configured: true, connected: false }, error: error.message });
+    }
+  }
+  if (req.method === 'POST' && url.pathname === '/api/material-groups') {
+    try {
+      const { subject = '资料分析', title, sourceName, ossObjectKey } = await readJson(req);
+      if (!title || !ossObjectKey) return sendJson(res, 400, { error: 'title and ossObjectKey are required.' });
+      const group = await database.createMaterialGroup({ id: crypto.randomUUID(), subject, title: String(title).slice(0, 255), sourceName: String(sourceName || '').slice(0, 255), ossObjectKey: String(ossObjectKey).slice(0, 512) });
+      return sendJson(res, 201, { group });
+    } catch (error) {
+      return sendJson(res, 503, { error: error.message });
+    }
+  }
+  if (req.method === 'GET' && url.pathname === '/api/material-groups') {
+    try { return sendJson(res, 200, { groups: await database.listMaterialGroups() }); }
+    catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
+  if (req.method === 'POST' && /^\/api\/material-groups\/[^/]+\/questions$/.test(url.pathname)) {
+    try {
+      const materialGroupId = url.pathname.split('/')[3];
+      const { questions } = await readJson(req);
+      if (!Array.isArray(questions) || questions.length < 1 || questions.length > 10 || questions.some(question => !question?.stem)) return sendJson(res, 400, { error: 'questions must contain 1 to 10 items with a stem.' });
+      await database.createQuestions(materialGroupId, questions.map(question => ({ stem: String(question.stem).slice(0, 10000), options: Array.isArray(question.options) ? question.options.slice(0, 8) : null, correctAnswer: question.correctAnswer }))); 
+      return sendJson(res, 201, { ok: true });
+    } catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
+  if (req.method === 'GET' && url.pathname === '/api/knowledge-nodes') {
+    try { return sendJson(res, 200, { nodes: await database.listKnowledgeNodes(url.searchParams.get('subject') || '资料分析') }); }
+    catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
+  if (req.method === 'POST' && url.pathname === '/api/knowledge-nodes') {
+    try {
+      const { subject = '资料分析', parentId, title, note } = await readJson(req);
+      if (!title) return sendJson(res, 400, { error: 'title is required.' });
+      const node = await database.createKnowledgeNode({ id: crypto.randomUUID(), subject: String(subject).slice(0, 40), parentId, title: String(title).slice(0, 120), note: String(note || '').slice(0, 10000) });
+      return sendJson(res, 201, { node });
+    } catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
+  if (req.method === 'POST' && /^\/api\/questions\/[^/]+\/attempts$/.test(url.pathname)) {
+    try {
+      const questionId = url.pathname.split('/')[3];
+      const { selectedAnswer, isCorrect, durationSeconds } = await readJson(req);
+      if (!Number.isInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > 10800) return sendJson(res, 400, { error: 'durationSeconds must be between 0 and 10800.' });
+      const attempt = await database.createAttempt({ id: crypto.randomUUID(), questionId, selectedAnswer: String(selectedAnswer || '').slice(0, 32), isCorrect: typeof isCorrect === 'boolean' ? isCorrect : null, durationSeconds });
+      return sendJson(res, 201, { attempt });
+    } catch (error) { return sendJson(res, 503, { error: error.message }); }
   }
   if (req.method === 'POST' && url.pathname === '/api/upload-policy') {
     try {

@@ -3,6 +3,7 @@ outputs/
 work/
 .DS_Store
 Thumbs.db
+node_modules/
 
 # Future cloud configuration (never commit credentials)
 .env
