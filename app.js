@@ -50,9 +50,31 @@ function showToast(title,sub){$('#toast strong').textContent=title;$('#toast sma
 $('#uploadBtn').onclick=()=>openModal('uploadModal');$('#aiFab').onclick=openPanel;$('#overlay').onclick=closeAll;$$('[data-close]').forEach(x=>x.onclick=closeAll);
 $$('[data-upload-tab]').forEach(btn=>btn.onclick=()=>{$$('[data-upload-tab]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');const image=btn.dataset.uploadTab==='image';$('#dropTitle').textContent=image?'拖入一道题目截图':'拖入一份试卷 PDF';$('#dropHint').textContent=image?'支持 PNG、JPG；可连续录入同一材料的关联题':'支持 PDF，原型中将使用演示文件模拟解析';$('#fileInput').accept=image?'image/*':'.pdf'});
 $('#chooseFile').onclick=()=>$('#fileInput').click();
-['dragenter','dragover'].forEach(e=>$('#dropZone').addEventListener(e,x=>{x.preventDefault();$('#dropZone').classList.add('dragover')}));['dragleave','drop'].forEach(e=>$('#dropZone').addEventListener(e,x=>{x.preventDefault();$('#dropZone').classList.remove('dragover');if(e==='drop') simulateParse()}));
-$('#fileInput').onchange=simulateParse;
-function simulateParse(){const dz=$('#dropZone');dz.innerHTML='<div class="upload-cloud">✦</div><h3>正在本地模拟识别题目…</h3><p>整理材料结构与 4 道关联小题</p><div class="progress-bar" style="max-width:260px;margin:auto"><i style="width:72%"></i></div>';setTimeout(()=>{closeAll();openModal('classifyModal')},750)}
+['dragenter','dragover'].forEach(e=>$('#dropZone').addEventListener(e,x=>{x.preventDefault();$('#dropZone').classList.add('dragover')}));['dragleave','drop'].forEach(e=>$('#dropZone').addEventListener(e,x=>{x.preventDefault();$('#dropZone').classList.remove('dragover');if(e==='drop') simulateParse(x.dataTransfer.files?.[0])}));
+$('#fileInput').onchange=event=>simulateParse(event.target.files?.[0]);
+async function simulateParse(file){
+  const dz=$('#dropZone');
+  const showProgress=(title,detail)=>{dz.innerHTML=`<div class="upload-cloud">☁</div><h3>${title}</h3><p>${detail}</p><div class="progress-bar" style="max-width:260px;margin:auto"><i style="width:72%"></i></div>`};
+  if(!file){showProgress('正在本地模拟识别题目…','整理材料结构与 4 道关联小题');setTimeout(()=>{closeAll();openModal('classifyModal')},750);return}
+  showProgress('正在准备安全上传…','正在向网站后端申请短时上传凭据');
+  try{
+    const policyResponse=await fetch('/api/upload-policy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({fileName:file.name,contentType:file.type})});
+    if(!policyResponse.ok) throw new Error((await policyResponse.json()).error||'上传服务暂不可用');
+    const policy=await policyResponse.json();
+    const form=new FormData();Object.entries(policy.fields).forEach(([key,value])=>form.append(key,value));form.append('file',file);
+    showProgress('正在上传到私有资料库…','文件只会保存在你的 OSS Bucket，链接不会公开');
+    const uploadResponse=await fetch(policy.url,{method:'POST',body:form});
+    if(!uploadResponse.ok) throw new Error('OSS 返回上传失败，请检查 Bucket CORS 和 RAM 权限');
+    state.uploaded=true;state.uploadedObjectKey=policy.objectKey;
+    showProgress('上传完成，正在识别题目…','材料将与 4 道关联小题保持成组保存');
+    setTimeout(()=>{closeAll();openModal('classifyModal')},600);
+  }catch(error){
+    console.warn('Cloud upload unavailable; using demo parser.',error);
+    showToast('云端上传暂未启用','当前仍可继续体验本地模拟流程；部署后会自动启用私有 OSS 上传。');
+    showProgress('正在本地模拟识别题目…','云端凭据尚未配置，未上传任何文件');
+    setTimeout(()=>{closeAll();openModal('classifyModal')},750);
+  }
+}
 $('#backUpload').onclick=()=>{closeAll();openModal('uploadModal')};$('#confirmSave').onclick=()=>{localStorage.setItem('zhixing_demo_saved','true');closeAll();showToast('题组已保存','AI 分类经你确认后写入本地错题本');setTimeout(()=>render('errors'),500)};
 $('#chatForm').onsubmit=e=>{e.preventDefault();const input=$('#chatInput');if(!input.value.trim())return;$('#chatBody').insertAdjacentHTML('beforeend',`<div class="message user"><div class="bubble">${input.value.replace(/[<>]/g,'')}</div></div><div class="message assistant"><div class="mini-avatar">✦</div><div class="bubble">可以先用“分子分母同向变化”判断趋势，再做截位估算。结合你的错题记录，建议把精算留到两个选项非常接近时。<br><br><small>这是本地模拟回答，不会发送到云端。</small></div></div>`);input.value='';$('#chatBody').scrollTop=$('#chatBody').scrollHeight};$$('.quick-prompts button').forEach(b=>b.onclick=()=>{$('#chatInput').value=b.textContent;$('#chatForm').requestSubmit()});
 $('#searchBtn').onclick=()=>{if(!$('#searchModal')){document.body.insertAdjacentHTML('beforeend',`<section class="modal search-modal" id="searchModal"><div class="modal-header" style="padding:0 0 12px"><h2>搜索知识库</h2><button class="close-btn" data-close="searchModal">×</button></div><input autofocus placeholder="输入知识点、题源或笔记关键词…"><div class="search-results"><div class="search-result"><span>增长率计算 · 4 组错题</span><span>知识点</span></div><div class="search-result"><span>基期量 = 现期量 ÷ (1 + 增长率)</span><span>笔记</span></div><div class="search-result"><span>2024 年全国文化产业营业收入</span><span>题组</span></div></div></section>`);$('#searchModal [data-close]').onclick=closeAll}openModal('searchModal');setTimeout(()=>$('#searchModal input').focus(),100)};

@@ -41,3 +41,19 @@ python -m http.server 4173
 - `app.js`：视图切换、计时器、上传模拟、AI 确认和本地助手交互
 
 此版本没有付费依赖、外部账号变更、网络请求或部署动作。
+
+## 正式上云骨架（已加入）
+
+项目现在包含零依赖 Node.js 后端：`server/index.js`。它负责给浏览器签发短时 OSS V4 上传策略；真实文件由浏览器直传私有 Bucket，长期密钥不会出现在前端。
+
+```powershell
+# 部署环境中配置 .env.example 的同名环境变量后运行
+npm start
+```
+
+- 健康检查：`GET /api/health`
+- 安全上传策略：`POST /api/upload-policy`
+- 数据库表结构：`database/schema.sql`
+- 阿里云最小权限与 CORS 配置说明：`docs/ALIYUN_OSS_SETUP.md`
+
+未配置服务器端 OSS 环境变量时，页面会继续使用本地演示流程，并且不会上传文件。
