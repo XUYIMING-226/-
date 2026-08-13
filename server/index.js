@@ -101,7 +101,7 @@ const server = http.createServer(async (req, res) => {
       const materialGroupId = url.pathname.split('/')[3];
       const { questions } = await readJson(req);
       if (!Array.isArray(questions) || questions.length < 1 || questions.length > 10 || questions.some(question => !question?.stem)) return sendJson(res, 400, { error: 'questions must contain 1 to 10 items with a stem.' });
-      const created = await database.createQuestions(materialGroupId, questions.map(question => ({ stem: String(question.stem).slice(0, 10000), options: Array.isArray(question.options) ? question.options.slice(0, 8) : null, correctAnswer: question.correctAnswer }))); 
+      const created = await database.createQuestions(materialGroupId, questions.map(question => ({ stem: String(question.stem).slice(0, 10000), options: Array.isArray(question.options) ? question.options.slice(0, 8) : null, correctAnswer: question.correctAnswer })));
       return sendJson(res, 201, { questions: created });
     } catch (error) { return sendJson(res, 503, { error: error.message }); }
   }
