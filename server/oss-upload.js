@@ -11,7 +11,8 @@ function uploadToOss({ bucket, region, accessKeyId, accessKeySecret, key, conten
   const now = new Date();
   const date = timestamp(now);
   const shortDate = date.slice(0, 8);
-  const host = `${bucket}.${region}-internal.aliyuncs.com`;
+  // OSS's VPC endpoint is bucket.oss-<region>-internal.aliyuncs.com.
+  const host = `${bucket}.oss-${region}-internal.aliyuncs.com`;
   const payloadHash = crypto.createHash('sha256').update(body).digest('hex');
   const canonicalHeaders = `content-type:${contentType}\nhost:${host}\nx-oss-content-sha256:${payloadHash}\nx-oss-date:${date}\n`;
   const signedHeaders = 'content-type;host;x-oss-content-sha256;x-oss-date';
