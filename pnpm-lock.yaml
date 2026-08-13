@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
       mysql2:
         specifier: ^3.14.4
         version: 3.23.3(@types/node@26.2.0)
@@ -20,6 +23,10 @@ packages:
   aws-ssl-profiles@1.1.2:
     resolution: {integrity: sha512-NZKeq9AfyQvEeNlN0zSYAaWrmBffJh3IELMZfRpJVWgrpEbtEpnjvzqBPf+mxoI287JohRDoa+/nsfqqiZmF6g==}
     engines: {node: '>= 6.0.0'}
+
+  dotenv@16.6.1:
+    resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
+    engines: {node: '>=12'}
 
   generate-function@2.3.1:
     resolution: {integrity: sha512-eeB5GfMNeevm/GRYq20ShmsaGcmI81kIX2K9XQx5miC8KdHaC6Jm0qQ8ZNeGOi7wYB8OsdxKs+Y2oVuTFuVwKQ==}
@@ -65,6 +72,8 @@ snapshots:
       undici-types: 8.3.0
 
   aws-ssl-profiles@1.1.2: {}
+
+  dotenv@16.6.1: {}
 
   generate-function@2.3.1:
     dependencies:
