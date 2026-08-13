@@ -24,7 +24,7 @@ function uploadToOss({ bucket, region, accessKeyId, accessKeySecret, key, conten
   const serviceKey = hmac(regionKey, 'oss');
   const signingKey = hmac(serviceKey, 'aliyun_v4_request');
   const signature = hmac(signingKey, stringToSign, 'hex');
-  const authorization = `${algorithm} Credential=${accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  const authorization = `${algorithm} Credential=${accessKeyId}/${scope},SignedHeaders=${signedHeaders},Signature=${signature}`;
   return new Promise((resolve, reject) => {
     const request = https.request({ hostname: host, method: 'PUT', path: objectPath(key), headers: { Host: host, 'Content-Type': contentType, 'Content-Length': body.length, 'x-oss-content-sha256': payloadHash, 'x-oss-date': date, Authorization: authorization } }, response => {
       const chunks = [];
