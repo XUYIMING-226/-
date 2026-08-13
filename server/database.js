@@ -51,6 +51,21 @@ async function listMaterialGroups() {
   return rows;
 }
 
+async function getMaterialGroup(id) {
+  const connectionPool = getPool();
+  if (!connectionPool) throw new Error('Database is not configured.');
+  const [groups] = await connectionPool.execute(
+    'SELECT id, subject, title, source_name AS sourceName, oss_object_key AS ossObjectKey, status, created_at AS createdAt FROM material_groups WHERE id = ?',
+    [id]
+  );
+  if (!groups[0]) return null;
+  const [questions] = await connectionPool.execute(
+    'SELECT id, position, stem, options_json AS optionsJson, correct_answer AS correctAnswer FROM questions WHERE material_group_id = ? ORDER BY position ASC',
+    [id]
+  );
+  return { ...groups[0], questions: questions.map(question => ({ ...question, options: question.optionsJson ? JSON.parse(question.optionsJson) : [] })) };
+}
+
 async function createQuestions(materialGroupId, questions) {
   const connectionPool = getPool();
   if (!connectionPool) throw new Error('Database is not configured.');
@@ -92,4 +107,4 @@ async function createAttempt({ id, questionId, selectedAnswer, isCorrect, durati
 }
 
 const crypto = require('node:crypto');
-module.exports = { configured, health, createMaterialGroup, listMaterialGroups, createQuestions, listKnowledgeNodes, createKnowledgeNode, createAttempt };
+module.exports = { configured, health, createMaterialGroup, listMaterialGroups, getMaterialGroup, createQuestions, listKnowledgeNodes, createKnowledgeNode, createAttempt };

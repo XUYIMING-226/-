@@ -1,6 +1,6 @@
 const $ = (s, el=document) => el.querySelector(s);
 const $$ = (s, el=document) => [...el.querySelectorAll(s)];
-const state = { view: 'dashboard', seconds: 0, timer: null, uploaded: false };
+const state = { view: 'dashboard', seconds: 0, timer: null, uploaded: false, uploadedObjectKey: null, uploadedFileName: null };
 
 const demoGroups = [
   {id:1,title:'2024 年全国文化产业营业收入',source:'2025 国考 · 地市级',desc:'根据全国规模以上文化及相关产业企业营业收入与同比增速，回答 116—119 题。',tags:['增长率计算','基期量'],wrong:2,time:'08:42',score:'2 / 4'},
@@ -36,6 +36,7 @@ function bindDynamic(){
   $$('[data-view]').forEach(el=>el.onclick=()=>render(el.dataset.view));
   $$('[data-action="start-review"], [data-group]').forEach(el=>el.onclick=()=>render('attempt'));
   $('#pageUpload')?.addEventListener('click',()=>openModal('uploadModal'));
+  if(state.view==='errors') loadCloudGroups();
   $('#askAiInsight')?.addEventListener('click',()=>openPanel());
   $('#submitAttempt')?.addEventListener('click',()=>{showToast('本题已提交','用时与作答结果已记录到本地');setTimeout(()=>render('review'),900)});
   $('#toggleTimer')?.addEventListener('click',e=>{if(state.timer){clearInterval(state.timer);state.timer=null;e.target.textContent='继续计时'}else{startTimer();e.target.textContent='暂停计时'}})
@@ -65,7 +66,7 @@ async function simulateParse(file){
     showProgress('正在上传到私有资料库…','文件只会保存在你的 OSS Bucket，链接不会公开');
     const uploadResponse=await fetch(policy.url,{method:'POST',body:form});
     if(!uploadResponse.ok) throw new Error('OSS 返回上传失败，请检查 Bucket CORS 和 RAM 权限');
-    state.uploaded=true;state.uploadedObjectKey=policy.objectKey;
+    state.uploaded=true;state.uploadedObjectKey=policy.objectKey;state.uploadedFileName=file.name;
     showProgress('上传完成，正在识别题目…','材料将与 4 道关联小题保持成组保存');
     setTimeout(()=>{closeAll();openModal('classifyModal')},600);
   }catch(error){
@@ -75,7 +76,33 @@ async function simulateParse(file){
     setTimeout(()=>{closeAll();openModal('classifyModal')},750);
   }
 }
-$('#backUpload').onclick=()=>{closeAll();openModal('uploadModal')};$('#confirmSave').onclick=()=>{localStorage.setItem('zhixing_demo_saved','true');closeAll();showToast('题组已保存','AI 分类经你确认后写入本地错题本');setTimeout(()=>render('errors'),500)};
+$('#backUpload').onclick=()=>{closeAll();openModal('uploadModal')};
+$('#confirmSave').onclick=async()=>{
+  const button=$('#confirmSave'); button.disabled=true;
+  try{
+    if(!state.uploadedObjectKey) throw new Error('请先完成文件上传；当前演示模式不会写入云端。');
+    const title=(state.uploadedFileName||'新录入题组').replace(/\.[^.]+$/,'').slice(0,255);
+    const response=await fetch('/api/material-groups',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({subject:'资料分析',title,sourceName:state.uploadedFileName,ossObjectKey:state.uploadedObjectKey})});
+    const payload=await response.json();
+    if(!response.ok) throw new Error(payload.error||'保存失败');
+    closeAll(); showToast('题组已保存到云端','资料文件保存在私有 OSS，题组记录已写入 RDS。');
+    state.uploaded=false;state.uploadedObjectKey=null;state.uploadedFileName=null;
+    setTimeout(()=>render('errors'),500);
+  }catch(error){ showToast('暂未保存到云端',error.message); }
+  finally{button.disabled=false;}
+};
+
+async function loadCloudGroups(){
+  try{
+    const response=await fetch('/api/material-groups'); if(!response.ok) return;
+    const {groups=[]}=await response.json(); if(!groups.length) return;
+    const list=$('.group-list'); if(!list) return;
+    const cloudCards=groups.map(group=>`<article class="group-card cloud-group" data-cloud-group="${group.id}"><div class="group-top"><div class="paper-thumb"><i></i><i></i><i></i><i></i></div><div class="group-copy"><span class="meta">云端题组 · ${group.questionCount||0} 道关联小题</span><h3>${escapeHtml(group.title)}</h3><p>已保存到你的私有云端资料库；后续可在此补录题干、选项、错因与速算笔记。</p><div class="tag-row"><span class="tag">${escapeHtml(group.subject)}</span><span class="tag orange">RDS 已保存</span></div></div><div class="group-score"><strong>${group.questionCount||0} / 4</strong><span>${new Date(group.createdAt).toLocaleDateString('zh-CN')}</span></div></div><div class="subquestions"><span>云端状态</span><small>材料与题组关联已建立 →</small></div></article>`).join('');
+    list.insertAdjacentHTML('afterbegin',cloudCards);
+  }catch(error){console.warn('Could not load cloud material groups.',error);}
+}
+
+function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}
 $('#chatForm').onsubmit=e=>{e.preventDefault();const input=$('#chatInput');if(!input.value.trim())return;$('#chatBody').insertAdjacentHTML('beforeend',`<div class="message user"><div class="bubble">${input.value.replace(/[<>]/g,'')}</div></div><div class="message assistant"><div class="mini-avatar">✦</div><div class="bubble">可以先用“分子分母同向变化”判断趋势，再做截位估算。结合你的错题记录，建议把精算留到两个选项非常接近时。<br><br><small>这是本地模拟回答，不会发送到云端。</small></div></div>`);input.value='';$('#chatBody').scrollTop=$('#chatBody').scrollHeight};$$('.quick-prompts button').forEach(b=>b.onclick=()=>{$('#chatInput').value=b.textContent;$('#chatForm').requestSubmit()});
 $('#searchBtn').onclick=()=>{if(!$('#searchModal')){document.body.insertAdjacentHTML('beforeend',`<section class="modal search-modal" id="searchModal"><div class="modal-header" style="padding:0 0 12px"><h2>搜索知识库</h2><button class="close-btn" data-close="searchModal">×</button></div><input autofocus placeholder="输入知识点、题源或笔记关键词…"><div class="search-results"><div class="search-result"><span>增长率计算 · 4 组错题</span><span>知识点</span></div><div class="search-result"><span>基期量 = 现期量 ÷ (1 + 增长率)</span><span>笔记</span></div><div class="search-result"><span>2024 年全国文化产业营业收入</span><span>题组</span></div></div></section>`);$('#searchModal [data-close]').onclick=closeAll}openModal('searchModal');setTimeout(()=>$('#searchModal input').focus(),100)};
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('#searchBtn').click()}if(e.key==='Escape')closeAll()});

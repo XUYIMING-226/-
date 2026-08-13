@@ -63,6 +63,13 @@ const server = http.createServer(async (req, res) => {
     try { return sendJson(res, 200, { groups: await database.listMaterialGroups() }); }
     catch (error) { return sendJson(res, 503, { error: error.message }); }
   }
+  if (req.method === 'GET' && /^\/api\/material-groups\/[^/]+$/.test(url.pathname)) {
+    try {
+      const group = await database.getMaterialGroup(url.pathname.split('/')[3]);
+      if (!group) return sendJson(res, 404, { error: 'Material group not found.' });
+      return sendJson(res, 200, { group });
+    } catch (error) { return sendJson(res, 503, { error: error.message }); }
+  }
   if (req.method === 'POST' && /^\/api\/material-groups\/[^/]+\/questions$/.test(url.pathname)) {
     try {
       const materialGroupId = url.pathname.split('/')[3];
